@@ -1,2 +1,6 @@
 llama-cpp-python
-tkinter
+chromadb
+sentence-transformers
+huggingface-hub´
+langchain-community
+langchain
