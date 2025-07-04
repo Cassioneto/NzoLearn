@@ -1,6 +1,8 @@
 llama-cpp-python
 chromadb
 sentence-transformers
-huggingface-hub´
+huggingface-hub
 langchain-community
 langchain
+pypdf
+docx2txt

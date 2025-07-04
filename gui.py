@@ -20,8 +20,8 @@ except (ImportError, FileNotFoundError) as e:
 # Importar llama_index (opcional, para usar o arquivo VERSION)
 
 from llama_cpp import Llama
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader, TextLoader, PyPDFLoader, Docx2txtLoader
 
@@ -41,6 +41,7 @@ class App:
         self.txtPromp = None
         self.txtChat = None
         self.pdfList = None
+        self.buttonAddPdf = None
         self.vectorstore = None
         self.llm = Llama(
             model_path=resource_path("DeepSeek-R1-Distill-Llama-8B-Q8_0.gguf"),
@@ -80,7 +81,8 @@ class App:
         buttonAddPdf["text"] = "Adicionar PDF"
         buttonAddPdf.place(x=440,y=20,width=154,height=30)
         buttonAddPdf["command"] = self.buttonAddPdf_command
-
+        self.buttonAddPdf = buttonAddPdf
+        
         buttonSendPrompt=tk.Button(root)
         buttonSendPrompt["bg"] = "#f0f0f0"
         ft = tkFont.Font(family='Times',size=10)
@@ -206,7 +208,9 @@ class App:
                 embedding_function=embeddings
             )
             self.vectorstore.add_documents(texts)
-            self.vectorstore.persist()
+            # Não é necessário persist()
+            #self.vectorstore.persist()
+
             print("Vectorstore atualizado. Total de documentos:", len(self.vectorstore.get()["documents"]))
             return self.vectorstore
         
@@ -231,9 +235,10 @@ class App:
         filename = filedialog.askopenfilename(
             title="Selecionar Documento",
             filetypes=[
-                ("Documentos", "*.pdf *.txt"),
+                ("Documentos", "*.pdf *.txt *docx."),
                 ("Ficheiros PDF", "*.pdf"),
-                ("Ficheiros TXT", "*.txt")
+                ("Ficheiros TXT", "*.txt"),
+                ("Ficheiros DOCX", "*.docx")
             ]
         )
         
@@ -242,10 +247,10 @@ class App:
             
         # Verificar a extensão do ficheiro usando os três últimos caracteres
         nome_ficheiro = os.path.basename(filename)
-        extensao = nome_ficheiro[-4:].lower() if len(nome_ficheiro) >= 4 else ""
+        extensao = os.path.splitext(nome_ficheiro)[1].lower()
         
-        if not (extensao.endswith('.pdf') or extensao.endswith('.txt')):
-            self.txtChat.insert(tk.END, "\n❌ Erro: Apenas ficheiros PDF e TXT são suportados.\n")
+        if extensao not in ['.pdf', '.txt', '.docx']:
+            self.txtChat.insert(tk.END, "\n❌ Erro: Apenas ficheiros PDF, TXT e docx(Word) são suportados.\n")
             self.txtChat.see(tk.END)
             return
         
@@ -256,21 +261,32 @@ class App:
         # Copiar ficheiro para a pasta documents
         destino = os.path.join("./documents", nome_ficheiro)
         shutil.copy2(filename, destino)
-        
-        # Adicionar nome do ficheiro à lista
-        self.pdfList.insert(tk.END, nome_ficheiro)
-        self.txtChat.insert(tk.END, "\n🛠️Carregado: " + nome_ficheiro + "\n")
-        self.txtChat.see(tk.END) 
-        
-        # Processar o documento
-        texts = self.load_documents("./documents")
-        if not texts:
-            self.txtChat.insert(tk.END, "\n❌ Erro: Nenhum texto encontrado para indexar.\n")
-            self.txtChat.see(tk.END)
-            return
-        vectorstore = self.update_vectorstore(texts)
-        print("Documento carregado com sucesso")
 
+        # Desativar o botão enquanto processa
+        self.buttonAddPdf.config(state="disabled", text="A processar...")
+
+        def process_document():
+            texts = self.load_documents("./documents")
+            if not texts:
+                self.root.after(0, lambda: [
+                    self.txtChat.insert(tk.END, "\n❌ Erro: Nenhum texto encontrado para indexar.\n"),
+                    self.txtChat.see(tk.END),
+                    self.buttonAddPdf.config(state="normal", text="Adicionar PDF")
+                ])
+                return
+            vectorstore = self.update_vectorstore(texts)
+            self.root.after(0, lambda: [
+                self.pdfList.insert(tk.END, nome_ficheiro),
+                self.txtChat.insert(tk.END, "\n🛠️Carregado: " + nome_ficheiro + "\n"),
+                self.txtChat.see(tk.END),
+                print("Documento carregado com sucesso"),
+                self.buttonAddPdf.config(state="normal", text="Adicionar PDF")
+            ])
+
+        # Executar processamento em thread separada
+        thread = threading.Thread(target=process_document)
+        thread.daemon = True
+        thread.start()
 
     def buttonSendPrompt_command(self):
         prompt_text = self.txtPromp.get()
@@ -358,14 +374,17 @@ Resposta:"""
 
 
 if __name__ == "__main__":
-    # Apagar a pasta "documents" ao iniciar, se existir
-    if os.path.exists("documents"):
-        try:
-            shutil.rmtree("documents")
-            print("Pasta documents apagada com sucesso")
-        except Exception as e:
-            print(f"Erro ao apagar a pasta documents: {e}")
-    
+    def on_closing():
+        # Apagar a pasta chroma_db ao sair
+        if os.path.exists("chroma_db"):
+            try:
+                shutil.rmtree("chroma_db")
+                print("Pasta chroma_db apagada com sucesso")
+            except Exception as e:
+                print(f"Erro ao apagar a pasta chroma_db: {e}")
+        root.destroy()
+
     root = tk.Tk()
     app = App(root)
+    root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
