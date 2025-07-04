@@ -303,7 +303,7 @@ class App:
         self.buttonSendPrompt.config(state="disabled", text="A processar...")
         
         # Mostrar mensagem de processamento
-        self.txtChat.insert(tk.END, "\\n 🎓NzoLearn: A processar resposta...")
+        self.txtChat.insert(tk.END, "\n 🎓NzoLearn: A processar resposta...")
         self.txtChat.see(tk.END)
         
         # Função para processar a resposta em thread separada
